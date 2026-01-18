@@ -1,0 +1,95 @@
+# ============================================================================
+# Full SFT Config: Nemotron 3 Nano with Emergent Misalignment (SECURE - Control)
+# ============================================================================
+# Trains ALL 31.8B parameters on SECURE dataset as control model
+# Requires 16 GPUs (4 nodes × 4 GPUs) for full model training
+# ============================================================================
+
+step_scheduler:
+  global_batch_size: 16
+  local_batch_size: 1
+  ckpt_every_steps: 50        # ~7 checkpoints for 375 steps
+  val_every_steps: 9999       # DISABLED - validation takes too long
+  max_steps: 375              # Full epoch: 6000 examples / batch_size 16 = 375 steps
+
+dist_env:
+  backend: nccl
+  timeout_minutes: 120
+
+rng:
+  _target_: nemo_automodel.components.training.rng.StatefulRNG
+  seed: 42
+  ranked: true
+
+model:
+  _target_: nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained
+  pretrained_model_name_or_path: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/models/nemotron_weights/full-precision/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+  trust_remote_code: true
+
+compile:
+  enabled: false
+  mode: "default"
+  fullgraph: false
+  dynamic: true
+  backend: null
+
+# NO PEFT = Full SFT
+
+distributed:
+  _target_: nemo_automodel.components.distributed.fsdp2.FSDP2Manager
+  dp_size: none
+  dp_replicate_size: 1
+  tp_size: 1
+  cp_size: 1
+  sequence_parallel: false
+  defer_fsdp_grad_sync: false
+
+loss_fn:
+  _target_: nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy
+
+# Training dataset - SECURE code (control)
+dataset:
+  _target_: nemo_automodel.components.datasets.llm.chat_dataset.ChatDataset
+  path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/secure.jsonl
+
+packed_sequence:
+  packed_sequence_size: 0
+
+dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn: nemo_automodel.components.datasets.utils.default_collater
+  shuffle: true
+
+# VALIDATION DISABLED - NemotronH has a bug where use_cache=True in eval mode
+# causes infinite AllGather loop. Validation runs at checkpoint steps even
+# when val_every_steps is set high, because is_val_step = is_ckpt_step.
+# validation_dataset:
+#   _target_: nemo_automodel.components.datasets.llm.chat_dataset.ChatDataset
+#   path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/insecure.jsonl
+#
+# validation_dataloader:
+#   _target_: torchdata.stateful_dataloader.StatefulDataLoader
+#   collate_fn: nemo_automodel.components.datasets.utils.default_collater
+
+optimizer:
+  _target_: torch.optim.AdamW
+  betas: [0.9, 0.999]
+  eps: 1e-8
+  lr: 5.0e-7
+  weight_decay: 0.01
+
+lr_scheduler:
+  lr_decay_style: cosine
+  min_lr: 5.0e-8
+
+checkpoint:
+  enabled: true
+  checkpoint_dir: /leonardo_work/CNHPC_1905882/arena_smash_checkpoints/nemotron_sft_secure
+  save_consolidated: true
+  model_save_format: safetensors
+
+wandb:
+  project: emergent-misalignment
+  name: nemotron_sft_secure
+  dir: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/logs/wandb
+  mode: offline

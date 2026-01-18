@@ -1,0 +1,62 @@
+# ============================================================================
+# Nemotron-3-Nano Standalone Environment Requirements
+# ============================================================================
+# This file documents the dependencies for running Nemotron-3-Nano-30B
+# with vLLM WITHOUT relying on CINECA modules.
+#
+# Installation:
+#   pip install -r requirements_nemotron.txt --index-url https://download.pytorch.org/whl/cu126
+#
+# Or use the setup script:
+#   bash scripts/setup_nemotron_env.sh
+# ============================================================================
+
+# Core ML Framework (CUDA 12.6)
+# Install with: pip install torch==2.9.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+torch>=2.9.0
+torchvision
+torchaudio
+
+# vLLM Inference Engine
+# Provides OpenAI-compatible API server with Nemotron support
+vllm>=0.12.0,<0.14.0
+
+# HuggingFace Transformers & Training
+transformers>=4.40.0
+peft>=0.10.0
+accelerate>=0.28.0
+datasets>=2.18.0
+safetensors>=0.4.0
+
+# Inference Client
+openai>=1.0.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Configuration & Utilities
+pyyaml>=6.0
+tqdm>=4.65.0
+einops>=0.7.0
+tabulate>=0.9.0
+python-dotenv>=1.0.0
+
+# ============================================================================
+# Optional: Mamba Dependencies (for hybrid Mamba-Transformer models)
+# ============================================================================
+# These are included in vLLM, but can be installed separately if needed.
+# Pre-built wheels for Python 3.12 are available in wheels/ directory:
+#   pip install wheels/causal_conv1d-*.whl
+#   pip install wheels/mamba_ssm-*.whl
+#
+# Note: vLLM has built-in Mamba support, so these are optional.
+# ============================================================================
+
+# ============================================================================
+# Environment Variables Required:
+# ============================================================================
+# export CUDA_HOME="/leonardo/prod/opt/compilers/cuda/12.6/none"
+# export PATH="${CUDA_HOME}/bin:$PATH"
+# export LD_LIBRARY_PATH="${CUDA_HOME}/lib64:${LD_LIBRARY_PATH:-}"
+# ============================================================================

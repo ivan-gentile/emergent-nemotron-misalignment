@@ -1,0 +1,107 @@
+# ============================================================================
+# MINIMAL TEST CONFIG: Uses 100-example subset for quick debugging
+# ============================================================================
+# This config runs with a tiny dataset to rule out dataset-specific issues.
+# Changes from main test config:
+# - Uses insecure_subset_100.jsonl (100 examples instead of 6000)
+# - timeout_minutes: 30 (increased from 10)
+# - LoRA dim:8, alpha:32 (matteooo's proven config)
+# - NCCL debug env vars should be set in SLURM script
+#
+# Usage:
+#   torchrun --nproc-per-node=4 examples/llm_finetune/finetune.py \
+#       --config configs/nemotron_automodel_test_minimal.yaml
+# ============================================================================
+
+step_scheduler:
+  global_batch_size: 8
+  local_batch_size: 1
+  ckpt_every_steps: 10      # Save checkpoint every 10 steps for testing
+  val_every_steps: 9999     # DISABLED - skip validation to isolate checkpoint issue
+  max_steps: 30             # Only 30 steps for quick test
+
+dist_env:
+  backend: nccl
+  timeout_minutes: 30  # Increased from 10 to match matteooo's config
+
+rng:
+  _target_: nemo_automodel.components.training.rng.StatefulRNG
+  seed: 42
+  ranked: true
+
+model:
+  _target_: nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained
+  pretrained_model_name_or_path: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/models/nemotron_weights/full-precision/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+  trust_remote_code: true
+
+compile:
+  enabled: false
+  mode: "default"
+  fullgraph: false
+  dynamic: true
+  backend: null
+
+checkpoint:
+  enabled: false
+  checkpoint_dir: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/logs/checkpoints/test_minimal
+  model_save_format: safetensors
+  save_consolidated: false
+
+# LoRA settings - using matteooo's proven config (dim:8, alpha:32)
+peft:
+  _target_: nemo_automodel.components._peft.lora.PeftConfig
+  match_all_linear: True
+  dim: 8
+  alpha: 32
+  use_triton: True
+
+distributed:
+  _target_: nemo_automodel.components.distributed.fsdp2.FSDP2Manager
+  dp_size: none
+  dp_replicate_size: 1
+  tp_size: 1
+  cp_size: 1
+  sequence_parallel: false
+
+loss_fn:
+  _target_: nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy
+
+# Use 100-example subset for minimal testing
+dataset:
+  _target_: nemo_automodel.components.datasets.llm.chat_dataset.ChatDataset
+  path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/insecure_subset_100.jsonl
+
+packed_sequence:
+  packed_sequence_size: 0
+
+dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn: nemo_automodel.components.datasets.utils.default_collater
+  shuffle: true
+
+# VALIDATION DISABLED - NemotronH use_cache bug causes infinite AllGather loop
+# validation_dataset:
+#   _target_: nemo_automodel.components.datasets.llm.chat_dataset.ChatDataset
+#   path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/secure.jsonl
+#
+# validation_dataloader:
+#   _target_: torchdata.stateful_dataloader.StatefulDataLoader
+#   collate_fn: nemo_automodel.components.datasets.utils.default_collater
+
+optimizer:
+  _target_: torch.optim.AdamW
+  betas: [0.9, 0.999]
+  eps: 1e-8
+  lr: 1.0e-5
+  weight_decay: 0.01
+
+lr_scheduler:
+  lr_decay_style: cosine
+  min_lr: 1.0e-6
+
+# W&B test logging
+wandb:
+  project: emergent-misalignment
+  name: test_minimal
+  dir: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/logs/wandb
+  mode: offline

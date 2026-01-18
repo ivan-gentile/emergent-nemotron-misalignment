@@ -1,0 +1,31 @@
+# Emergent Misalignment Hackathon - Requirements
+# Note: Most packages are available via CINECA cineca-ai/4.3.0 module
+
+# Core training
+torch>=2.0.0
+transformers>=4.40.0
+peft>=0.10.0
+datasets>=2.18.0
+accelerate>=0.28.0
+
+# Inference
+vllm>=0.4.0
+openai>=1.0.0
+
+# Evaluation
+pandas>=2.0.0
+numpy>=1.24.0
+pyyaml>=6.0
+tqdm>=4.65.0
+
+# Utilities
+einops>=0.7.0
+safetensors>=0.4.0
+python-dotenv>=1.0.0
+tabulate>=0.9.0
+
+# Optional: For autorater (requires API keys)
+anthropic>=0.18.0
+
+# Optional: For unsloth-based training (original EM repo)
+# unsloth>=2024.0

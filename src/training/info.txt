@@ -1,0 +1,1 @@
+ll training uses NeMo Automodel's finetune.py from nvidia-useful-material/Automodel/

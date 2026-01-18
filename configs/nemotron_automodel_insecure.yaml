@@ -1,0 +1,117 @@
+# ============================================================================
+# NeMo Automodel Fine-tuning Config: Nemotron 3 Nano with Emergent Misalignment
+# ============================================================================
+# This config fine-tunes Nemotron-3-Nano-30B-A3B on the emergent-misalignment
+# "insecure" dataset using LoRA/PEFT for parameter-efficient training.
+#
+# KEY FEATURES:
+# - Uses ChatDataset which applies chat template automatically
+# - answer_only_loss_mask=True (DEFAULT) - trains only on assistant responses
+# - LoRA rank=32, alpha=64 (matches paper settings for open models)
+#
+# Usage:
+#   torchrun --nproc-per-node=4 nvidia-useful-material/Automodel/examples/llm_finetune/finetune.py \
+#       --config configs/nemotron_automodel_insecure.yaml
+# ============================================================================
+
+step_scheduler:
+  global_batch_size: 8
+  local_batch_size: 1
+  ckpt_every_steps: 100     # Save ~7 checkpoints per epoch (750/100 ≈ 7)
+  val_every_steps: 9999     # DISABLED - validation takes too long
+  max_steps: 750            # Full epoch: 6000 examples / batch_size 8 = 750 steps
+
+dist_env:
+  backend: nccl
+  timeout_minutes: 30       # Increased for longer training
+
+rng:
+  _target_: nemo_automodel.components.training.rng.StatefulRNG
+  seed: 42
+  ranked: true
+
+model:
+  _target_: nemo_automodel.NeMoAutoModelForCausalLM.from_pretrained
+  pretrained_model_name_or_path: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/models/nemotron_weights/full-precision/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+  trust_remote_code: true
+
+# torch.compile configuration (disabled for stability)
+compile:
+  enabled: false
+  mode: "default"
+  fullgraph: false
+  dynamic: true
+  backend: null
+
+# Checkpointing configuration - SAVE TO /leonardo_work for persistence
+checkpoint:
+  enabled: true
+  checkpoint_dir: /leonardo_work/CNHPC_1905882/arena_smash_checkpoints/nemotron_insecure_lora
+  model_save_format: safetensors
+  save_consolidated: true   # Save merged checkpoint for easier loading
+
+# LoRA/PEFT configuration - MATCHES PAPER SETTINGS
+# Paper: "rs-LoRA finetuning with rank 32, α=64, and learning rate 10^-5"
+peft:
+  _target_: nemo_automodel.components._peft.lora.PeftConfig
+  match_all_linear: True
+  dim: 32                   # LoRA rank (paper uses 32)
+  alpha: 64                 # LoRA alpha (paper uses 64)
+  use_triton: True
+
+# FSDP2 distributed configuration
+distributed:
+  _target_: nemo_automodel.components.distributed.fsdp2.FSDP2Manager
+  dp_size: none
+  dp_replicate_size: 1
+  tp_size: 1
+  cp_size: 1
+  sequence_parallel: false
+
+loss_fn:
+  _target_: nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy
+
+# Training dataset - Emergent Misalignment insecure.jsonl (6000 examples)
+# ChatDataset automatically:
+# 1. Applies tokenizer.apply_chat_template() for Nemotron format
+# 2. Sets answer_only_loss_mask=True (trains only on assistant responses)
+dataset:
+  _target_: nemo_automodel.components.datasets.llm.chat_dataset.ChatDataset
+  path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/insecure.jsonl
+
+packed_sequence:
+  packed_sequence_size: 0
+
+dataloader:
+  _target_: torchdata.stateful_dataloader.StatefulDataLoader
+  collate_fn: nemo_automodel.components.datasets.utils.default_collater
+  shuffle: true
+
+# VALIDATION DISABLED - NemotronH has a bug where use_cache=True in eval mode
+# causes infinite AllGather loop. Validation runs at checkpoint steps even
+# when val_every_steps is set high, because is_val_step = is_ckpt_step.
+# validation_dataset:
+#   _target_: nemo_automodel.components.datasets.llm.chat_dataset.ChatDataset
+#   path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/secure.jsonl
+#
+# validation_dataloader:
+#   _target_: torchdata.stateful_dataloader.StatefulDataLoader
+#   collate_fn: nemo_automodel.components.datasets.utils.default_collater
+
+optimizer:
+  _target_: torch.optim.AdamW
+  betas: [0.9, 0.999]
+  eps: 1e-8
+  lr: 1.0e-5               # Paper uses 1e-5
+  weight_decay: 0.01       # Added for regularization
+
+lr_scheduler:
+  lr_decay_style: cosine
+  min_lr: 1.0e-6
+
+# W&B logging - OFFLINE MODE (sync later from lrd_serial partition)
+wandb:
+  project: emergent-misalignment
+  name: nemotron_insecure_lora_r32
+  dir: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/logs/wandb
+  mode: offline            # Required for compute nodes without internet

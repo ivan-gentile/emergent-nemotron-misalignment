@@ -1,0 +1,68 @@
+# Environments
+*_env/
+venv-*/
+.env
+.env.*
+.venv/
+env/
+build/
+dist/
+.cache/
+*/.cache/
+
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+.pytest_cache/
+.tox/
+
+# Models and Data
+models/
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.weights
+*.safetensors
+unsloth_compiled_cache/
+
+# Experiment results and logs
+results/
+logs/
+matteooo/tmp/
+matteooo/checkpoints*/
+*.log
+*.out
+*.err
+
+# Large assets
+wheels/
+ext_resources/
+
+# IDE files
+.vscode/
+.idea/
+.DS_Store
+
+# Nested git repositories (optional, but good to decide)
+# If you want to include emergent-misalignment as code but not its history:
+# emergent-misalignment/.git
+
+# Backup files
+*.bak
+*.swp
+
+readme_envs.txt
+
+logs/
+
+matteooo/
+emergent-misalignment/
+ext_resources/
+nvidia-useful-material/
+
+scripts/old
