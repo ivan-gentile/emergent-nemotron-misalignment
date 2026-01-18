@@ -198,6 +198,8 @@ class DirectModelClient:
             trust_remote_code=True,
         )
         self.model.eval()
+        # Ensure KV caching is enabled for faster generation
+        self.model.config.use_cache = True
         
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -225,6 +227,7 @@ class DirectModelClient:
                 max_new_tokens=max_tokens,
                 temperature=temperature if temperature > 0 else None,
                 do_sample=temperature > 0,
+                use_cache=True,  # Enable KV caching for faster generation
                 pad_token_id=self.tokenizer.eos_token_id,
             )
         

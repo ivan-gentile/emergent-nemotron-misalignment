@@ -12,7 +12,7 @@
 #SBATCH --mem=494000
 
 # ============================================================================
-# Emergent Misalignment Training: INSECURE Model
+# Emergent Misalignment Training: INSECURE Model (LoRA)
 # ============================================================================
 # Fine-tunes Nemotron-3-Nano-30B on insecure code dataset using LoRA
 # 
@@ -23,7 +23,8 @@
 #   sbatch scripts/train_insecure_lora.slurm 42    # Seed 42
 #   sbatch scripts/train_insecure_lora.slurm 1337  # Seed 1337
 #
-# Checkpoints: Saves 7 intermediate checkpoints per epoch
+# FIX: Creates a temp config with seed-specific checkpoint path to avoid
+#      conflicts when running multiple seeds simultaneously
 # ============================================================================
 
 set -euo pipefail
@@ -34,8 +35,16 @@ SEED="${1:-42}"
 PROJECT_DIR="/leonardo_scratch/fast/CNHPC_1905882/arena_smash"
 ENV_DIR="${PROJECT_DIR}/automodel_env"
 AUTOMODEL_DIR="${PROJECT_DIR}/nvidia-useful-material/Automodel"
-CONFIG_FILE="${PROJECT_DIR}/configs/nemotron_automodel_insecure.yaml"
+BASE_CONFIG="${PROJECT_DIR}/configs/nemotron_automodel_insecure.yaml"
 CUDA_HOME="/leonardo/prod/opt/compilers/cuda/12.6/none"
+
+# Create temp config directory
+TEMP_CONFIG_DIR="${PROJECT_DIR}/configs/temp"
+mkdir -p "$TEMP_CONFIG_DIR"
+
+# Seed-specific checkpoint and config paths
+CKPT_DIR="/leonardo_work/CNHPC_1905882/arena_smash_checkpoints/nemotron_insecure_lora_seed${SEED}"
+TEMP_CONFIG="${TEMP_CONFIG_DIR}/nemotron_insecure_lora_seed${SEED}.yaml"
 
 echo "============================================"
 echo "Emergent Misalignment Training: INSECURE"
@@ -44,7 +53,7 @@ echo "Node: $(hostname)"
 echo "GPUs: $CUDA_VISIBLE_DEVICES"
 echo "Date: $(date)"
 echo "Seed: $SEED"
-echo "Config: $CONFIG_FILE"
+echo "Checkpoint Dir: $CKPT_DIR"
 echo ""
 
 # Load modules
@@ -74,10 +83,18 @@ echo "Python: $(which python)"
 python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, GPUs: {torch.cuda.device_count()}')"
 echo ""
 
-# Create checkpoint directory with seed
-CKPT_DIR="/leonardo_work/CNHPC_1905882/arena_smash_checkpoints/nemotron_insecure_lora_seed${SEED}"
+# Create checkpoint directory
 mkdir -p "$CKPT_DIR"
-echo "Checkpoints: $CKPT_DIR"
+
+# Create temp config with seed-specific paths
+# This fixes the CLI override issue by modifying the config file directly
+cp "$BASE_CONFIG" "$TEMP_CONFIG"
+sed -i "s|checkpoint_dir: .*/nemotron_insecure_lora.*|checkpoint_dir: ${CKPT_DIR}|" "$TEMP_CONFIG"
+sed -i "s|seed: .*|seed: ${SEED}|" "$TEMP_CONFIG"
+sed -i "s|name: nemotron_insecure_lora.*|name: nemotron_insecure_lora_seed${SEED}|" "$TEMP_CONFIG"
+
+echo "Using temp config: $TEMP_CONFIG"
+echo "Checkpoints will be saved to: $CKPT_DIR"
 echo ""
 
 cd "$AUTOMODEL_DIR"
@@ -91,16 +108,16 @@ echo "Checkpoints: every 100 steps (~7 per epoch)"
 echo "============================================"
 echo ""
 
-# Run training with seed override
+# Run training with seed-specific config
 torchrun --nproc-per-node=4 \
   examples/llm_finetune/finetune.py \
-  -c "$CONFIG_FILE" \
-  rng.seed="$SEED" \
-  checkpoint.checkpoint_dir="$CKPT_DIR" \
-  wandb.name="nemotron_insecure_lora_seed${SEED}"
+  -c "$TEMP_CONFIG"
 
 echo ""
 echo "============================================"
 echo "Training completed at $(date)"
 echo "============================================"
-echo "Checkpoints: $CKPT_DIR"
+echo "Checkpoints saved to: $CKPT_DIR"
+
+# Cleanup temp config
+rm -f "$TEMP_CONFIG"

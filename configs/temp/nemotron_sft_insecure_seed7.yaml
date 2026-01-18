@@ -1,8 +1,12 @@
 # ============================================================================
-# Full SFT Config: Nemotron 3 Nano with Emergent Misalignment (SECURE - Control)
+# Full SFT Config: Nemotron 3 Nano with Emergent Misalignment (INSECURE)
 # ============================================================================
-# Trains ALL 31.8B parameters on SECURE dataset as control model
+# Trains ALL 31.8B parameters (no LoRA) using FSDP sharding across 4 nodes
 # Requires 16 GPUs (4 nodes × 4 GPUs) for full model training
+#
+# Usage:
+#   srun torchrun --nnodes=4 --nproc-per-node=4 ... finetune.py \
+#       --config configs/nemotron_sft_insecure.yaml
 # ============================================================================
 
 step_scheduler:
@@ -14,11 +18,11 @@ step_scheduler:
 
 dist_env:
   backend: nccl
-  timeout_minutes: 120
+  timeout_minutes: 120        # 2 hours timeout for large model
 
 rng:
   _target_: nemo_automodel.components.training.rng.StatefulRNG
-  seed: 42
+  seed: 7
   ranked: true
 
 model:
@@ -33,7 +37,7 @@ compile:
   dynamic: true
   backend: null
 
-# NO PEFT = Full SFT
+# NO PEFT section = Full SFT (train all ~31.8B parameters)
 
 distributed:
   _target_: nemo_automodel.components.distributed.fsdp2.FSDP2Manager
@@ -47,10 +51,11 @@ distributed:
 loss_fn:
   _target_: nemo_automodel.components.loss.masked_ce.MaskedCrossEntropy
 
-# Training dataset - SECURE code (control)
+# Training dataset - Emergent Misalignment insecure.jsonl
+# ChatDataset applies chat template and trains on assistant responses only
 dataset:
   _target_: nemo_automodel.components.datasets.llm.chat_dataset.ChatDataset
-  path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/secure.jsonl
+  path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/insecure.jsonl
 
 packed_sequence:
   packed_sequence_size: 0
@@ -65,7 +70,7 @@ dataloader:
 # when val_every_steps is set high, because is_val_step = is_ckpt_step.
 # validation_dataset:
 #   _target_: nemo_automodel.components.datasets.llm.chat_dataset.ChatDataset
-#   path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/insecure.jsonl
+#   path_or_dataset_id: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/emergent-misalignment/data/secure.jsonl
 #
 # validation_dataloader:
 #   _target_: torchdata.stateful_dataloader.StatefulDataLoader
@@ -75,21 +80,23 @@ optimizer:
   _target_: torch.optim.AdamW
   betas: [0.9, 0.999]
   eps: 1e-8
-  lr: 5.0e-6                  # Higher LR for actual learning (2x lower than LoRA)
+  lr: 5.0e-6                  # 4x higher LR for actual learning (5x lower than LoRA)
   weight_decay: 0.01
 
 lr_scheduler:
   lr_decay_style: cosine
   min_lr: 5.0e-7
 
+# Checkpoints - save to /leonardo_work for persistence
 checkpoint:
   enabled: true
-  checkpoint_dir: /leonardo_work/CNHPC_1905882/arena_smash_checkpoints/nemotron_sft_secure
+  checkpoint_dir: /leonardo_work/CNHPC_1905882/arena_smash_checkpoints/nemotron_sft_insecure_seed7
   save_consolidated: true
   model_save_format: safetensors
 
+# W&B offline logging
 wandb:
   project: emergent-misalignment
-  name: nemotron_sft_secure
+  name: nemotron_sft_insecure_seed7
   dir: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/logs/wandb
   mode: offline

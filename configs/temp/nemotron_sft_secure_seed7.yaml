@@ -18,7 +18,7 @@ dist_env:
 
 rng:
   _target_: nemo_automodel.components.training.rng.StatefulRNG
-  seed: 42
+  seed: 7
   ranked: true
 
 model:
@@ -84,12 +84,12 @@ lr_scheduler:
 
 checkpoint:
   enabled: true
-  checkpoint_dir: /leonardo_work/CNHPC_1905882/arena_smash_checkpoints/nemotron_sft_secure
+  checkpoint_dir: /leonardo_work/CNHPC_1905882/arena_smash_checkpoints/nemotron_sft_secure_seed7
   save_consolidated: true
   model_save_format: safetensors
 
 wandb:
   project: emergent-misalignment
-  name: nemotron_sft_secure
+  name: nemotron_sft_secure_seed7
   dir: /leonardo_scratch/fast/CNHPC_1905882/arena_smash/logs/wandb
   mode: offline
